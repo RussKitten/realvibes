@@ -164,7 +164,7 @@ function processStatement(ctx: Ctx, stmt: TsNode, inMain: boolean): FlowResult |
     if (thenBranch) {
       const r = processStatement(ctx, thenBranch, inMain);
       if (r) {
-        addEdge(ctx, decision.id, r.entry, 'да');
+        addEdge(ctx, decision.id, r.entry, 'да', 'left', 'top');
         thenFlow = r;
       }
     }
@@ -173,7 +173,7 @@ function processStatement(ctx: Ctx, stmt: TsNode, inMain: boolean): FlowResult |
     if (elseBranch) {
       const r = processStatement(ctx, elseBranch, inMain);
       if (r) {
-        addEdge(ctx, decision.id, r.entry, 'нет');
+        addEdge(ctx, decision.id, r.entry, 'нет', 'right', 'top');
         elseFlow = r;
       }
     }
@@ -183,7 +183,7 @@ function processStatement(ctx: Ctx, stmt: TsNode, inMain: boolean): FlowResult |
     if (elseFlow) exits.push(...elseFlow.exits);
     if (!thenFlow && !elseFlow) exits.push(decision.id);
     else if (!thenFlow) exits.push(decision.id);
-    else if (!elseFlow) addEdge(ctx, decision.id, decision.id, 'нет');
+    else if (!elseFlow) exits.push(decision.id);
 
     return { entry: decision.id, exits };
   }
@@ -197,7 +197,7 @@ function processStatement(ctx: Ctx, stmt: TsNode, inMain: boolean): FlowResult |
     if (body) {
       const r = processStatement(ctx, body, inMain);
       if (r) {
-        addEdge(ctx, decision.id, r.entry, 'да');
+        addEdge(ctx, decision.id, r.entry, 'да', 'bottom', 'top');
         for (const ex of r.exits) addEdge(ctx, ex, decision.id);
         bodyFlow = r;
       }
@@ -228,7 +228,7 @@ function processStatement(ctx: Ctx, stmt: TsNode, inMain: boolean): FlowResult |
     if (body) {
       const r = processStatement(ctx, body, inMain);
       if (r) {
-        addEdge(ctx, decision.id, r.entry, 'да');
+        addEdge(ctx, decision.id, r.entry, 'да', 'bottom', 'top');
         bodyFlow = r;
       }
     }
@@ -250,11 +250,8 @@ function processStatement(ctx: Ctx, stmt: TsNode, inMain: boolean): FlowResult |
   }
 
   if (type === 'return_statement') {
-    // В main() возврат игнорируется полностью — завершение программы уже показано блоком «Конец».
     if (inMain) return null;
 
-    // В остальных функциях: возврат значения — это вывод (символ «Ввод/Вывод»),
-    // возврат без значения — действие (символ «Процесс»).
     const hasValue = stmt.namedChildCount > 0;
     if (hasValue) {
       const value = text(stmt.namedChild(0)!, ctx.source).replace(/;$/, '').trim();

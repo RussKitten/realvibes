@@ -1,15 +1,6 @@
 import {
-  AlignmentType,
-  BorderStyle,
-  Document,
-  ImageRun,
-  Packer,
-  Paragraph,
-  Table,
-  TableCell,
-  TableRow,
-  TextRun,
-  WidthType,
+  AlignmentType, BorderStyle, Document, ImageRun, Packer,
+  Paragraph, Table, TableCell, TableRow, TextRun, WidthType,
   type IBorderOptions,
 } from 'docx';
 import type { ListingSettings } from '../types';

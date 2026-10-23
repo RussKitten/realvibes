@@ -135,7 +135,7 @@ interface FlowResult {
   exits: string[];
 }
 
-function processStatement(ctx: Ctx, stmt: TsNode): FlowResult | null {
+function processStatement(ctx: Ctx, stmt: TsNode, inMain: boolean): FlowResult | null {
   const type = stmt.type;
 
   if (type === 'compound_statement') {
@@ -143,7 +143,7 @@ function processStatement(ctx: Ctx, stmt: TsNode): FlowResult | null {
     for (let i = 0; i < stmt.childCount; i += 1) {
       const child = stmt.child(i);
       if (!child || child.type === '{' || child.type === '}') continue;
-      const r = processStatement(ctx, child);
+      const r = processStatement(ctx, child, inMain);
       if (r) results.push(r);
     }
     if (results.length === 0) return null;
@@ -162,7 +162,7 @@ function processStatement(ctx: Ctx, stmt: TsNode): FlowResult | null {
 
     let thenFlow: FlowResult | null = null;
     if (thenBranch) {
-      const r = processStatement(ctx, thenBranch);
+      const r = processStatement(ctx, thenBranch, inMain);
       if (r) {
         addEdge(ctx, decision.id, r.entry, 'да');
         thenFlow = r;
@@ -171,7 +171,7 @@ function processStatement(ctx: Ctx, stmt: TsNode): FlowResult | null {
 
     let elseFlow: FlowResult | null = null;
     if (elseBranch) {
-      const r = processStatement(ctx, elseBranch);
+      const r = processStatement(ctx, elseBranch, inMain);
       if (r) {
         addEdge(ctx, decision.id, r.entry, 'нет');
         elseFlow = r;
@@ -195,7 +195,7 @@ function processStatement(ctx: Ctx, stmt: TsNode): FlowResult | null {
     const decision = createNode(ctx, 'decision', `Условие: ${condText}`);
     let bodyFlow: FlowResult | null = null;
     if (body) {
-      const r = processStatement(ctx, body);
+      const r = processStatement(ctx, body, inMain);
       if (r) {
         addEdge(ctx, decision.id, r.entry, 'да');
         for (const ex of r.exits) addEdge(ctx, ex, decision.id);
@@ -226,7 +226,7 @@ function processStatement(ctx: Ctx, stmt: TsNode): FlowResult | null {
 
     let bodyFlow: FlowResult | null = null;
     if (body) {
-      const r = processStatement(ctx, body);
+      const r = processStatement(ctx, body, inMain);
       if (r) {
         addEdge(ctx, decision.id, r.entry, 'да');
         bodyFlow = r;
@@ -250,8 +250,18 @@ function processStatement(ctx: Ctx, stmt: TsNode): FlowResult | null {
   }
 
   if (type === 'return_statement') {
-    const value = stmt.namedChildCount > 0 ? text(stmt.namedChild(0)!, ctx.source) : 'return';
-    const n = createNode(ctx, 'process', value ? `return ${value}` : 'return');
+    // В main() возврат игнорируется полностью — завершение программы уже показано блоком «Конец».
+    if (inMain) return null;
+
+    // В остальных функциях: возврат значения — это вывод (символ «Ввод/Вывод»),
+    // возврат без значения — действие (символ «Процесс»).
+    const hasValue = stmt.namedChildCount > 0;
+    if (hasValue) {
+      const value = text(stmt.namedChild(0)!, ctx.source).replace(/;$/, '').trim();
+      const n = createNode(ctx, 'input-output', `Вывод ${value}`);
+      return { entry: n.id, exits: [n.id] };
+    }
+    const n = createNode(ctx, 'process', 'Возврат из подпрограммы');
     return { entry: n.id, exits: [n.id] };
   }
 
@@ -268,7 +278,7 @@ function processStatement(ctx: Ctx, stmt: TsNode): FlowResult | null {
       return { entry: n.id, exits: [n.id] };
     }
     const callMatch = raw.match(/^([\w:]+)\s*\(/);
-    if (callMatch && !/^return/.test(raw) && !/^\w+\s*=/.test(raw)) {
+    if (callMatch && !/^\w+\s*=/.test(raw)) {
       const n = createNode(ctx, 'predefined-process', raw);
       return { entry: n.id, exits: [n.id] };
     }
@@ -318,6 +328,7 @@ export function cppAstToFlow(
   for (const fn of functions) {
     const declarator = fn.childForFieldName('declarator');
     const name = declarator ? text(declarator, source).split('(')[0].trim() : 'function';
+    const isMain = name === 'main';
     const body = fn.childForFieldName('body');
 
     const start = createNode(ctx, 'start-end', `Начало ${name}`);
@@ -327,7 +338,7 @@ export function cppAstToFlow(
       continue;
     }
 
-    const bodyFlow = processStatement(ctx, body);
+    const bodyFlow = processStatement(ctx, body, isMain);
     if (bodyFlow) {
       addEdge(ctx, start.id, bodyFlow.entry);
       const end = createNode(ctx, 'start-end', 'Конец');
